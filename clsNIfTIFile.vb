@@ -184,6 +184,11 @@ Public Class clsNIfTIFile
                 SFormCode = 1
             End If
 
+            'オフセットが標準以外の場合
+            If VoxelOffset > 352 Then
+                reader.ReadBytes(VoxelOffset - 352)
+            End If
+
             '画素データを取り込み
             Dim AllPixelBuff() As Byte = reader.ReadBytes(Convert.ToInt64(MatrixX) * Convert.ToInt64(MatrixY) * Convert.ToInt64(MatrixZ) * BytesPerPixel)
 
