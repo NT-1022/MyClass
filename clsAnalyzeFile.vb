@@ -162,7 +162,7 @@ Public Class clsAnalyzeFile
 
         'imgファイル読み込み
         Using reader As New BinaryReader(File.OpenRead(imgFilePath))
-            Dim AllPixelBuff() = reader.ReadBytes(Convert.ToInt64(MatrixX) * Convert.ToInt64(MatrixY) * Convert.ToInt64(MatrixZ) * BytesPerPixel)
+            Dim AllPixelBuff() As Byte = reader.ReadBytes(Convert.ToInt64(MatrixX) * Convert.ToInt64(MatrixY) * Convert.ToInt64(MatrixZ) * BytesPerPixel)
 
             Dim Offset As Long = 0
 
@@ -359,7 +359,6 @@ Public Class clsAnalyzeFile
         Dim HeaderBuff(347) As Byte
 
         'Endian判定
-        'Array.Copy(BitConverter.GetBytes(CLng(348)), 0, HeaderBuff, 0, 4)
         HeaderBuff(0) = &H5C
         HeaderBuff(1) = &H1
         HeaderBuff(2) = &H0
@@ -402,6 +401,7 @@ Public Class clsAnalyzeFile
         'スケーリングファクタ(スケーリングなし固定）
         Buffer.BlockCopy(BitConverter.GetBytes(CSng(1)), 0, HeaderBuff, OFFSET_RESCALE_SLOPE, 4)
         Buffer.BlockCopy(BitConverter.GetBytes(CSng(0)), 0, HeaderBuff, OFFSET_RESCALE_INTERCEPT, 4)
+
 
         '画素値をバッファリング
         '小数点以下6桁まで担保

@@ -1,5 +1,5 @@
 ﻿Imports System.IO
-Public Class clsNIfTIFile
+Public Class clsNIfTIHeader
     Public Property BigEndianFlag As Boolean    'バイトオーダー（TrueでBigEndian）
     Public Property Dimension0 As Short
     Public Property MatrixX As Short             '横方向のマトリクスサイズ
@@ -60,7 +60,7 @@ Public Class clsNIfTIFile
     Private Const OFFSET_SROW_Y As Integer = 296
     Private Const OFFSET_SROW_Z As Integer = 312
     Private Const OFFSET_MAGIC_WORD As Integer = 344
-    Private Const MAGIC_WORD As String = "n+1" & Chr(0)
+    Private Const MAGIC_WORD As String = "ni1" & Chr(0)
 
     Sub New()
         BigEndianFlag = False
@@ -82,7 +82,7 @@ Public Class clsNIfTIFile
         SizeDim5 = 0
         SizeDim6 = 0
         SizeDim7 = 0
-        VoxelOffset = 352
+        VoxelOffset = 0
         RescaleSlope = 1
         RescaleIntercept = 0
         QFormCode = 1
@@ -99,13 +99,32 @@ Public Class clsNIfTIFile
     End Sub
 
     Sub Read(ByVal FilePath As String)
+        Dim hdrFilePath As String
+        Dim imgFilePath As String
+        Dim BytesPerPixel As Integer
 
-        If Not File.Exists(FilePath) Then
-            Throw New FileNotFoundException($"File not found: {FilePath}")
+        Select Case Path.GetExtension(FilePath)
+            Case ".hdr"
+                hdrFilePath = FilePath
+                imgFilePath = Path.ChangeExtension(FilePath, "img")
+            Case ".img"
+                hdrFilePath = Path.ChangeExtension(FilePath, "hdr")
+                imgFilePath = FilePath
+            Case Else
+                Throw New FileNotFoundException("Header/Image file not found.", FilePath)
+        End Select
+
+        If Not File.Exists(hdrFilePath) Then
+            Throw New FileNotFoundException("Header file not found.", hdrFilePath)
         End If
 
+        If Not File.Exists(imgFilePath) Then
+            Throw New FileNotFoundException("Image file not found.", imgFilePath)
+        End If
+
+        'hdrファイル読み込み
         ' streamから読み込むためのBinaryReaderを作成
-        Using reader As New BinaryReader(File.OpenRead(FilePath))
+        Using reader As New BinaryReader(File.OpenRead(hdrFilePath))
             Dim HeaderBuff() As Byte = reader.ReadBytes(352)
 
             'Endian判定
@@ -139,7 +158,7 @@ Public Class clsNIfTIFile
 
             'BitsPerPixel
             BitsPerPixel = ReadValue(Of Int16)(HeaderBuff, OFFSET_BITPERPIXEL, BigEndianFlag)
-            Dim BytesPerPixel As Integer = BitsPerPixel / 8
+            BytesPerPixel = BitsPerPixel / 8
 
             'ピクセルサイズ
             SizeDim0 = ReadValue(Of Single)(HeaderBuff, OFFSET_PIXDIM, BigEndianFlag)
@@ -189,6 +208,13 @@ Public Class clsNIfTIFile
                 reader.ReadBytes(VoxelOffset - 352)
             End If
 
+        End Using
+
+        Pixel = New Double(MatrixX - 1, MatrixY - 1, MatrixZ - 1) {}
+
+        'imgファイル読み込み
+
+        Using reader As New BinaryReader(File.OpenRead(imgFilePath))
             '画素データを取り込み
             Dim AllPixelBuff() As Byte = reader.ReadBytes(Convert.ToInt64(MatrixX) * Convert.ToInt64(MatrixY) * Convert.ToInt64(MatrixZ) * BytesPerPixel)
 
@@ -252,8 +278,22 @@ Public Class clsNIfTIFile
     End Sub
 
     Sub Write(ByVal FilePath As String, OverWriteFlag As Boolean)
+        Dim imgFilePath As String
+        Dim hdrFilePath As String
 
-        If File.Exists(FilePath) And OverWriteFlag = False Then
+        Select Case Path.GetExtension(FilePath)
+            Case "hdr"
+                hdrFilePath = FilePath
+                imgFilePath = Path.ChangeExtension(FilePath, "img")
+            Case "img"
+                hdrFilePath = Path.ChangeExtension(FilePath, "hdr")
+                imgFilePath = FilePath
+            Case Else
+                hdrFilePath = Path.ChangeExtension(FilePath, "hdr")
+                imgFilePath = Path.ChangeExtension(FilePath, "img")
+        End Select
+
+        If OverWriteFlag = False And (File.Exists(hdrFilePath) OrElse File.Exists(imgFilePath)) Then
             Console.WriteLine("The file already exists. Do you want to overwrite it? (Y/N)")
             Dim response As String = Console.ReadLine()
             If response.ToUpper() <> "Y" Then Exit Sub
@@ -279,10 +319,10 @@ Public Class clsNIfTIFile
         Buffer.BlockCopy(BitConverter.GetBytes(MatrixX), 0, HeaderBuff, OFFSET_MATRIX_X, 2)
         Buffer.BlockCopy(BitConverter.GetBytes(MatrixY), 0, HeaderBuff, OFFSET_MATRIX_Y, 2)
         Buffer.BlockCopy(BitConverter.GetBytes(MatrixZ), 0, HeaderBuff, OFFSET_MATRIX_Z, 2)
-        Buffer.BlockCopy(BitConverter.GetBytes(Dimension4), 0, HeaderBuff, OFFSET_MATRIX_Z + 4, 2)
-        Buffer.BlockCopy(BitConverter.GetBytes(Dimension5), 0, HeaderBuff, OFFSET_MATRIX_Z + 8, 2)
-        Buffer.BlockCopy(BitConverter.GetBytes(Dimension6), 0, HeaderBuff, OFFSET_MATRIX_Z + 12, 2)
-        Buffer.BlockCopy(BitConverter.GetBytes(Dimension7), 0, HeaderBuff, OFFSET_MATRIX_Z + 16, 2)
+        Buffer.BlockCopy(BitConverter.GetBytes(Dimension4), 0, HeaderBuff, OFFSET_MATRIX_Z + 2, 2)
+        Buffer.BlockCopy(BitConverter.GetBytes(Dimension5), 0, HeaderBuff, OFFSET_MATRIX_Z + 4, 2)
+        Buffer.BlockCopy(BitConverter.GetBytes(Dimension6), 0, HeaderBuff, OFFSET_MATRIX_Z + 6, 2)
+        Buffer.BlockCopy(BitConverter.GetBytes(Dimension7), 0, HeaderBuff, OFFSET_MATRIX_Z + 8, 2)
 
         'データタイプ（float型16固定）
         Buffer.BlockCopy(BitConverter.GetBytes(CShort(16)), 0, HeaderBuff, OFFSET_DATATYPE, 2)
@@ -297,10 +337,10 @@ Public Class clsNIfTIFile
         Buffer.BlockCopy(BitConverter.GetBytes(SizeX), 0, HeaderBuff, OFFSET_SIZE_X, 4)
         Buffer.BlockCopy(BitConverter.GetBytes(SizeY), 0, HeaderBuff, OFFSET_SIZE_Y, 4)
         Buffer.BlockCopy(BitConverter.GetBytes(SizeZ), 0, HeaderBuff, OFFSET_SIZE_Z, 4)
-        Buffer.BlockCopy(BitConverter.GetBytes(SizeDim4), 0, HeaderBuff, OFFSET_SIZE_Z + 2, 4)
-        Buffer.BlockCopy(BitConverter.GetBytes(SizeDim5), 0, HeaderBuff, OFFSET_SIZE_Z + 4, 4)
-        Buffer.BlockCopy(BitConverter.GetBytes(SizeDim6), 0, HeaderBuff, OFFSET_SIZE_Z + 6, 4)
-        Buffer.BlockCopy(BitConverter.GetBytes(SizeDim7), 0, HeaderBuff, OFFSET_SIZE_Z + 8, 4)
+        Buffer.BlockCopy(BitConverter.GetBytes(SizeDim4), 0, HeaderBuff, OFFSET_SIZE_Z + 4, 4)
+        Buffer.BlockCopy(BitConverter.GetBytes(SizeDim5), 0, HeaderBuff, OFFSET_SIZE_Z + 8, 4)
+        Buffer.BlockCopy(BitConverter.GetBytes(SizeDim6), 0, HeaderBuff, OFFSET_SIZE_Z + 12, 4)
+        Buffer.BlockCopy(BitConverter.GetBytes(SizeDim7), 0, HeaderBuff, OFFSET_SIZE_Z + 16, 4)
 
         '画素データのオフセット
         Buffer.BlockCopy(BitConverter.GetBytes(VoxelOffset), 0, HeaderBuff, OFFSET_VOXEL_OFFSET, 4)
@@ -346,14 +386,15 @@ Public Class clsNIfTIFile
         Next
 
         'ファイル書き込み
-        Using writer As New BinaryWriter(File.OpenWrite(FilePath))
+        Using writer As New BinaryWriter(File.OpenWrite(hdrFilePath))
             'ヘッダ書き込み
             writer.Write(HeaderBuff)
+        End Using
 
+        Using writer As New BinaryWriter(File.OpenWrite(imgFilePath))
             'ピクセル書き込み
             writer.Write(DestBuff)
         End Using
-
     End Sub
 
     Private Function ReadValue(Of T)(Buffer() As Byte, Offset As Long, isBigEndian As Boolean) As T
